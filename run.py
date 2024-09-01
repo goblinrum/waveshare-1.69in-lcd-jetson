@@ -1,5 +1,7 @@
 import spidev
 import logging
+import random
+import asyncio
 import numpy as np
 import time
 import spidev as SPI
@@ -68,7 +70,7 @@ class RaspberryPi:
         self._pwm.stop()
         time.sleep(0.001)
         self.GPIO.output(self.BL_PIN, 1)
-        #self.GPIO.cleanup()
+        self.GPIO.cleanup()
 
 
 
@@ -231,7 +233,6 @@ class LCD_1inch69(RaspberryPi):
         """Write display buffer to physical display"""
         imwidth, imheight = Image.size
         if imwidth == self.height and imheight ==  self.width:
-            print("Landscape screen")
             img = self.np.asarray(Image)
             pix = self.np.zeros((self.width, self.height,2), dtype = self.np.uint8)
             #RGB888 >> RGB565
@@ -246,7 +247,6 @@ class LCD_1inch69(RaspberryPi):
             for i in range(0,len(pix),4096):
                 self.spi_writebyte(pix[i:i+4096])
         else :
-            print("Portrait screen")
             img = self.np.asarray(Image)
             pix = self.np.zeros((imheight,imwidth , 2), dtype = self.np.uint8)
             
@@ -260,6 +260,76 @@ class LCD_1inch69(RaspberryPi):
             self.digital_write(self.DC_PIN,True)
         for i in range(0, len(pix), 4096):
             self.spi_writebyte(pix[i: i+4096])
+
+    
+    async def blink(self, blink_count=1):
+        # Create a blank black image
+        eye_image = Image.new("RGB", (self.width, self.height), "BLACK")
+        draw = ImageDraw.Draw(eye_image)
+
+        # Define eye parameters
+        eye_width = self.width // 2
+        eye_height = self.height // 2
+        eye_x = (self.width - eye_width) // 2
+        eye_y = (self.height - eye_height) // 2
+
+        # Draw the eye (white oval)
+        draw.ellipse([eye_x, eye_y, eye_x + eye_width, eye_y + eye_height], fill="WHITE")
+
+        # Create a black image for closed eye
+        closed_eye = Image.new("RGB", (self.width, self.height), "BLACK")
+        closed_draw = ImageDraw.Draw(closed_eye)
+
+        # Draw a line for the closed eye
+        line_y = self.height // 2
+        closed_draw.line([(0, line_y), (self.width, line_y)], fill="WHITE", width=5)
+
+        # Blink animation
+        for _ in range(blink_count):
+            # Show open eye
+            self.ShowImage(eye_image)
+            await asyncio.sleep(2)  # Keep eye open for 2 seconds
+
+            # Show closed eye
+            self.ShowImage(closed_eye)
+            await asyncio.sleep(0.2)  # Keep eye closed for 0.2 seconds
+
+            # timesleep = random.uniform(0.05, 0.2)
+            # time.sleep(timesleep)
+
+        # End with open eye
+        self.ShowImage(eye_image)
+
+    async def _move_eye(self, start_x, end_x, duration=0.2, frames=10):
+        eye_width = self.width // 2
+        eye_height = self.height // 2
+        eye_y = (self.height - eye_height) // 2
+
+        for i in range(frames + 1):
+            eye_image = Image.new("RGB", (self.width, self.height), "BLACK")
+            draw = ImageDraw.Draw(eye_image)
+
+            # Calculate current x position
+            current_x = start_x + (end_x - start_x) * i // frames
+
+            # Draw the eye (white oval) at the current position
+            draw.ellipse([current_x, eye_y, current_x + eye_width, eye_y + eye_height], fill="WHITE")
+
+            # Show the current frame
+            self.ShowImage(eye_image)
+            await asyncio.sleep(duration / frames)
+
+    async def look_left(self, duration=0.2):
+        center_x = (self.width - self.width // 2) // 2
+        left_x = 0
+        await self._move_eye(center_x, left_x, duration)
+        await self._move_eye(left_x, center_x, duration / 2)  # Return to center faster
+
+    async def look_right(self, duration=0.2):
+        center_x = (self.width - self.width // 2) // 2
+        right_x = self.width - self.width // 2
+        await self._move_eye(center_x, right_x, duration)
+        await self._move_eye(right_x, center_x, duration / 2)  # Return to center faster
         
 
     def clear(self):
@@ -270,103 +340,169 @@ class LCD_1inch69(RaspberryPi):
         for i in range(0, len(_buffer), 4096):
             self.spi_writebyte(_buffer[i: i+4096])
         
-# Raspberry Pi pin configuration:
-RST = 6
-DC = 25
-BL = 12
-bus = 0 
-device = 0 
+# Raspberry Pi pin configuration for Jetson Nano
+L_RST = 6
+L_DC = 25
+L_BL = 12
+L_bus = 0 
+L_device = 0 
+
+R_RST = 20
+R_DC = 16
+R_BL = 13
+R_bus = 2
+R_device = 0
+
 logging.basicConfig(level = logging.DEBUG)
 
-try:
-    # display with hardware SPI:
-    ''' Warning!!!Don't  creation of multiple displayer objects!!! '''
-    disp = LCD_1inch69(spi=SPI.SpiDev(bus, device),spi_freq=10000000,rst=RST,dc=DC,bl=BL)
-    # disp2 = LCD_1inch69(spi=SPI.SpiDev(bus, 1), spi_freq=10000000, rst=RST, dc)
-    # disp = LCD_1inch69()
-    # Initialize library.
-    disp.Init()
-    # Clear display.
-    disp.clear()
-    #Set the backlight to 100
-    disp.bl_DutyCycle(50)
+disp1 = LCD_1inch69(spi=SPI.SpiDev(L_bus, L_device),spi_freq=10000000,rst=L_RST,dc=L_DC,bl=L_BL)
+disp2 = LCD_1inch69(spi=SPI.SpiDev(R_bus, R_device), spi_freq=10000000, rst=R_RST, dc=R_DC, bl=R_BL)
 
-    Font1 = ImageFont.truetype("./Font/Font01.ttf", 25)
-    Font2 = ImageFont.truetype("./Font/Font01.ttf", 35)
-    Font3 = ImageFont.truetype("./Font/Font02.ttf", 32)
+async def blink_both_eyes(disp1, disp2, blink_count=3):
+    await asyncio.gather(
+        disp1.blink(blink_count),
+        disp2.blink(blink_count)
+    )
 
-    # Create blank image for drawing.
-    image1 = Image.new("RGB", (disp.width, disp.height ), "WHITE")
-    draw = ImageDraw.Draw(image1)
-    disp.ShowImage(image1)
-    time.sleep(2)
+async def move_eyes(disp1, disp2, direction, duration=0.2):
+    if direction == "left":
+        await asyncio.gather(
+            disp1.look_left(duration),
+            disp2.look_left(duration)
+        )
+    elif direction == "right":
+        await asyncio.gather(
+            disp1.look_right(duration),
+            disp2.look_right(duration)
+        )
+    else:
+        print("Invalid direction. Use 'left' or 'right'.")
 
-    logging.info("draw point")
-    draw.rectangle((25, 10, 26, 11), fill = "BLACK")
-    draw.rectangle((25, 25, 27, 27), fill = "BLACK")
-    draw.rectangle((25, 40, 28, 43), fill = "BLACK")
-    draw.rectangle((25, 55, 29, 59), fill = "BLACK")
-    disp.ShowImage(image1)
-    time.sleep(2)
+async def run(disp1, disp2):
+    try:
+        # Initialize both displays
+        disp1.Init()
+        disp2.Init()
+        
+        # Clear displays
+        disp1.clear()
+        disp2.clear()
+        
+        # Set backlight
+        disp1.bl_DutyCycle(50)
+        disp2.bl_DutyCycle(50)
 
-    logging.info("draw rectangle")
-    draw.rectangle([(40, 10), (90, 60)], fill = "WHITE", outline="BLUE")
-    draw.rectangle([(105, 10), (150, 60)], fill = "BLUE")
-    disp.ShowImage(image1)
-    time.sleep(2)
+        # Blink both eyes simultaneously
+        await blink_both_eyes(disp1, disp2, 3)  # Blink 3 times
 
-    logging.info("draw line")
-    draw.line([(40, 10), (90, 60)], fill = "RED", width = 1)
-    draw.line([(90, 10), (40, 60)], fill = "RED", width = 1)
-    draw.line([(130, 65), (130, 115)], fill = "RED", width = 1)
-    draw.line([(105, 90), (155, 90)], fill = "RED", width = 1)
-    disp.ShowImage(image1)
-    time.sleep(2)
+        # Look left
+        await move_eyes(disp1, disp2, "left", 2)
+        await asyncio.sleep(1)
 
-    logging.info("draw circle")
-    draw.arc((105, 65, 155, 115), 0, 360, fill =(0, 255, 0))
-    draw.ellipse((40, 65, 90, 115), fill = (0, 255, 0))
-    disp.ShowImage(image1)
-    time.sleep(2)
+        # Look right
+        await move_eyes(disp1, disp2, "right", 2)
+        await asyncio.sleep(1)
 
-    logging.info("draw text")
-    draw.rectangle([(20, 120), (160, 153)], fill = "BLUE")
-    draw.text((25, 120), 'Hello world', fill = "RED", font=Font1)
-    draw.rectangle([(20,155), (192, 195)], fill = "RED")
-    draw.text((21, 155), 'WaveShare', fill = "WHITE", font=Font2)
-    draw.text((25, 190), '1234567890', fill = "GREEN", font=Font3)
-    text= u"微雪电子"
-    draw.text((25, 230),text, fill = "BLUE", font=Font3)
-    image1=image1.rotate(0)
-    disp.ShowImage(image1)
-    time.sleep(2)
-    
-    image2 = Image.new("RGB", (disp.height,disp.width ), "WHITE")
-    draw = ImageDraw.Draw(image2)
-    draw.text((60, 2), u"题龙阳县青草湖", fill = 808000, font=Font3)
-    draw.text((100, 42), u"元  唐珙", fill = 808080, font=Font3)
-    draw.text((60, 82), u"西风吹老洞庭波，", fill = "BLUE", font=Font3)
-    draw.text((60, 122), u"一夜湘君白发多。", fill = "RED", font=Font3)
-    draw.text((60, 162), u"醉后不知天在水，", fill = "GREEN", font=Font3)
-    draw.text((60, 202), u"满船清梦压星河。", fill = "BLACK", font=Font3)
-    image2=image2.rotate(0)
-    disp.ShowImage(image2)
-    time.sleep(2)   
-    
-    logging.info("show image")
-    ImagePath = ["./pic/LCD_1inch69_4.jpg", "./pic/LCD_1inch69_5.jpg", "./pic/LCD_1inch69_6.jpg"]
-    for i in range(0, 3):
-        image = Image.open(ImagePath[i])	
-        # image = image.rotate(0)
-        disp.ShowImage(image)
+    except IOError as e:
+        logging.info(e)    
+    except KeyboardInterrupt:
+        disp1.module_exit()
+        disp2.module_exit()
+        logging.info("quit:")
+        exit()
+
+
+def test(disp):
+    try:
+        # display with hardware SPI:
+        ''' Warning!!!Don't  creation of multiple displayer objects!!! '''
+        
+        # Initialize library.
+        disp.Init()
+        # Clear display.
+        disp.clear()
+        #Set the backlight to 100
+        disp.bl_DutyCycle(50)
+
+        Font1 = ImageFont.truetype("./Font/Font01.ttf", 25)
+        Font2 = ImageFont.truetype("./Font/Font01.ttf", 35)
+        Font3 = ImageFont.truetype("./Font/Font02.ttf", 32)
+
+        # Create blank image for drawing.
+        image1 = Image.new("RGB", (disp.width, disp.height ), "WHITE")
+        draw = ImageDraw.Draw(image1)
+        disp.ShowImage(image1)
         time.sleep(2)
-    disp.module_exit()
-    logging.info("quit:")
-    
-except IOError as e:
-    logging.info(e)    
-    
-except KeyboardInterrupt:
-    disp.module_exit()
-    logging.info("quit:")
-    exit()
+
+        logging.info("draw point")
+        draw.rectangle((25, 10, 26, 11), fill = "BLACK")
+        draw.rectangle((25, 25, 27, 27), fill = "BLACK")
+        draw.rectangle((25, 40, 28, 43), fill = "BLACK")
+        draw.rectangle((25, 55, 29, 59), fill = "BLACK")
+        disp.ShowImage(image1)
+        time.sleep(2)
+
+        logging.info("draw rectangle")
+        draw.rectangle([(40, 10), (90, 60)], fill = "WHITE", outline="BLUE")
+        draw.rectangle([(105, 10), (150, 60)], fill = "BLUE")
+        disp.ShowImage(image1)
+        time.sleep(2)
+
+        logging.info("draw line")
+        draw.line([(40, 10), (90, 60)], fill = "RED", width = 1)
+        draw.line([(90, 10), (40, 60)], fill = "RED", width = 1)
+        draw.line([(130, 65), (130, 115)], fill = "RED", width = 1)
+        draw.line([(105, 90), (155, 90)], fill = "RED", width = 1)
+        disp.ShowImage(image1)
+        time.sleep(2)
+
+        logging.info("draw circle")
+        draw.arc((105, 65, 155, 115), 0, 360, fill =(0, 255, 0))
+        draw.ellipse((40, 65, 90, 115), fill = (0, 255, 0))
+        disp.ShowImage(image1)
+        time.sleep(2)
+
+        logging.info("draw text")
+        draw.rectangle([(20, 120), (160, 153)], fill = "BLUE")
+        draw.text((25, 120), 'Hello world', fill = "RED", font=Font1)
+        draw.rectangle([(20,155), (192, 195)], fill = "RED")
+        draw.text((21, 155), 'WaveShare', fill = "WHITE", font=Font2)
+        draw.text((25, 190), '1234567890', fill = "GREEN", font=Font3)
+        text= u"微雪电子"
+        draw.text((25, 230),text, fill = "BLUE", font=Font3)
+        image1=image1.rotate(0)
+        disp.ShowImage(image1)
+        time.sleep(2)
+        
+        image2 = Image.new("RGB", (disp.height,disp.width ), "WHITE")
+        draw = ImageDraw.Draw(image2)
+        draw.text((60, 2), u"题龙阳县青草湖", fill = 808000, font=Font3)
+        draw.text((100, 42), u"元  唐珙", fill = 808080, font=Font3)
+        draw.text((60, 82), u"西风吹老洞庭波，", fill = "BLUE", font=Font3)
+        draw.text((60, 122), u"一夜湘君白发多。", fill = "RED", font=Font3)
+        draw.text((60, 162), u"醉后不知天在水，", fill = "GREEN", font=Font3)
+        draw.text((60, 202), u"满船清梦压星河。", fill = "BLACK", font=Font3)
+        image2=image2.rotate(0)
+        disp.ShowImage(image2)
+        time.sleep(2)   
+        
+        logging.info("show image")
+        ImagePath = ["./pic/LCD_1inch69_4.jpg", "./pic/LCD_1inch69_5.jpg", "./pic/LCD_1inch69_6.jpg"]
+        for i in range(0, 3):
+            image = Image.open(ImagePath[i])	
+            # image = image.rotate(0)
+            disp.ShowImage(image)
+            time.sleep(2)
+        disp.module_exit()
+        logging.info("quit:")
+        
+    except IOError as e:
+        logging.info(e)    
+        
+    except KeyboardInterrupt:
+        disp.module_exit()
+        logging.info("quit:")
+        exit()
+
+if __name__ == "__main__":
+    asyncio.run(run(disp1, disp2))
