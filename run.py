@@ -300,7 +300,7 @@ class LCD_1inch69(RaspberryPi):
         # End with open eye
         self.ShowImage(eye_image)
 
-    async def _move_eye(self, start_x, end_x, duration=0.05, frames=10):
+    async def _move_eye(self, start_x, end_x, duration=0.05, frames=15):
         eye_width = self.width // 2
         eye_height = self.height // 2
         eye_y = (self.height - eye_height) // 2
@@ -355,8 +355,8 @@ R_device = 0
 
 logging.basicConfig(level = logging.DEBUG)
 
-disp1 = LCD_1inch69(spi=SPI.SpiDev(L_bus, L_device),spi_freq=12000000,rst=L_RST,dc=L_DC,bl=L_BL)
-disp2 = LCD_1inch69(spi=SPI.SpiDev(R_bus, R_device), spi_freq=12000000, rst=R_RST, dc=R_DC, bl=R_BL)
+disp1 = LCD_1inch69(spi=SPI.SpiDev(L_bus, L_device),spi_freq=12000000,rst=L_RST,dc=L_DC,bl=L_BL) # this display does not do over 12 MHz
+disp2 = LCD_1inch69(spi=SPI.SpiDev(R_bus, R_device), spi_freq=50000000, rst=R_RST, dc=R_DC, bl=R_BL) # this display is ballin
 
 async def blink_both_eyes(disp1, disp2, blink_count=1):
     await asyncio.gather(
@@ -396,11 +396,11 @@ async def run(disp1, disp2):
         await blink_both_eyes(disp1, disp2, 3)  # Blink 3 times
 
         # Look left
-        await move_eyes(disp1, disp2, "left", 2)
+        await move_eyes(disp1, disp2, "left", 0.05)
         await asyncio.sleep(1)
 
         # Look right
-        await move_eyes(disp1, disp2, "right", 2)
+        await move_eyes(disp1, disp2, "right", 0.05)
         await asyncio.sleep(1)
 
     except IOError as e:
