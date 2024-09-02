@@ -203,7 +203,7 @@ class LCD_1inch69(RaspberryPi):
             self.command(0x2A)
             self.data(Xstart+20>>8)         #Set the horizontal starting point to the high octet
             self.data(Xstart+20 & 0xff)     #Set the horizontal starting point to the low octet
-            self.data(Xend+20-1>>8)         #Set the horizontal end to the high octet
+            self.data(Xend+20-1>>8)         #Set the horizontal end to the high octe            t
             self.data((Xend+20-1) & 0xff)   #Set the horizontal end to the low octet 
             #set the Y coordinates
             self.command(0x2B)
@@ -300,7 +300,7 @@ class LCD_1inch69(RaspberryPi):
         # End with open eye
         self.ShowImage(eye_image)
 
-    async def _move_eye(self, start_x, end_x, duration=0.2, frames=10):
+    async def _move_eye(self, start_x, end_x, duration=0.05, frames=10):
         eye_width = self.width // 2
         eye_height = self.height // 2
         eye_y = (self.height - eye_height) // 2
@@ -319,17 +319,17 @@ class LCD_1inch69(RaspberryPi):
             self.ShowImage(eye_image)
             await asyncio.sleep(duration / frames)
 
-    async def look_left(self, duration=0.2):
+    async def look_left(self, duration=0.02):
         center_x = (self.width - self.width // 2) // 2
         left_x = 0
-        await self._move_eye(center_x, left_x, duration)
-        await self._move_eye(left_x, center_x, duration / 2)  # Return to center faster
+        await self._move_eye(center_x, left_x, duration / 2)
+        await self._move_eye(left_x, center_x, duration / 2)
 
-    async def look_right(self, duration=0.2):
+    async def look_right(self, duration=0.02):
         center_x = (self.width - self.width // 2) // 2
         right_x = self.width - self.width // 2
-        await self._move_eye(center_x, right_x, duration)
-        await self._move_eye(right_x, center_x, duration / 2)  # Return to center faster
+        await self._move_eye(center_x, right_x, duration / 2)
+        await self._move_eye(right_x, center_x, duration / 2)
         
 
     def clear(self):
@@ -355,16 +355,16 @@ R_device = 0
 
 logging.basicConfig(level = logging.DEBUG)
 
-disp1 = LCD_1inch69(spi=SPI.SpiDev(L_bus, L_device),spi_freq=10000000,rst=L_RST,dc=L_DC,bl=L_BL)
-disp2 = LCD_1inch69(spi=SPI.SpiDev(R_bus, R_device), spi_freq=10000000, rst=R_RST, dc=R_DC, bl=R_BL)
+disp1 = LCD_1inch69(spi=SPI.SpiDev(L_bus, L_device),spi_freq=12000000,rst=L_RST,dc=L_DC,bl=L_BL)
+disp2 = LCD_1inch69(spi=SPI.SpiDev(R_bus, R_device), spi_freq=12000000, rst=R_RST, dc=R_DC, bl=R_BL)
 
-async def blink_both_eyes(disp1, disp2, blink_count=3):
+async def blink_both_eyes(disp1, disp2, blink_count=1):
     await asyncio.gather(
         disp1.blink(blink_count),
         disp2.blink(blink_count)
     )
 
-async def move_eyes(disp1, disp2, direction, duration=0.2):
+async def move_eyes(disp1, disp2, direction, duration=0.001):
     if direction == "left":
         await asyncio.gather(
             disp1.look_left(duration),
